@@ -2,14 +2,14 @@
 
 # ✝ Liturgia TTS API
 
-**Uma API modular para consultar, normalizar e preparar textos litúrgicos católicos para síntese de voz.**
+**Uma API modular para consultar conteúdo litúrgico, calcular o calendário romano e gerar áudio com legendas sincronizadas.**
 
 [![Node.js](https://img.shields.io/badge/Node.js-22.9%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Tests](https://img.shields.io/badge/tests-node--test-2ea44f)](.github/workflows/ci.yml)
 [![API](https://img.shields.io/badge/API-REST%20%2F%20JSON-2563eb)](docs/API.md)
-[![Version](https://img.shields.io/badge/version-1.5.0-7c3aed)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.0-7c3aed)](CHANGELOG.md)
 
-*Canção Nova para a liturgia corrente · Dancrf para consultas por data · Saída preparada para TTS*
+*Canção Nova e Dancrf · calendário litúrgico · Piper TTS · áudio e legendas sincronizadas*
 
 </div>
 
@@ -21,7 +21,7 @@ A **Liturgia TTS API** funciona como uma camada de integração entre provedores
 
 O projeto foi desenhado para ser extensível: novos provedores, regras de normalização e mecanismos de saída podem ser adicionados sem concentrar toda a lógica no servidor HTTP.
 
-> **Escopo atual:** a API entrega texto normalizado e estrutura de roteiro. Ela **não sintetiza nem armazena arquivos de áudio** e não possui integração executável com Piper nesta versão.
+> **Áudio opcional:** o motor Piper é executado localmente quando um modelo ONNX está configurado. Sem modelo, os endpoints de texto e calendário continuam funcionais; os endpoints de síntese retornam `503` com instruções de configuração.
 
 ## ✨ Recursos
 
@@ -36,9 +36,13 @@ O projeto foi desenhado para ser extensível: novos provedores, regras de normal
 | Santo do dia | Biografia, oração e lista de outros santos via API comunitária |
 | Normalização hagiográfica | Campos `original` / `tts`, modos `faithful` / `editorial` e roteiro contínuo |
 | Imagem do santo | Busca Wikimedia Commons, fallback Wikipédia e metadados de atribuição/licença |
+| Calendário litúrgico | Tempos, cores, ciclos A/B/C e I/II, Páscoa e principais datas móveis |
+| Síntese de voz | Piper CLI, WAV/MP3, segmentação por frase e cache SHA-256 |
+| Legendas sincronizadas | SRT e WebVTT com tempos medidos por segmento de áudio |
+| Pacote multimídia | Agrega calendário, liturgia, santo, imagem e áudio em uma resposta |
 | Integridade temporal | Detecção de resposta upstream referente a uma data diferente da solicitada |
 | Cache | Memória do processo, TTL e limite de entradas configuráveis |
-| Runtime | Node.js nativo, sem dependências externas de runtime |
+| Runtime | Node.js nativo; Piper e FFmpeg são dependências opcionais do módulo de áudio |
 | Testes | `node:test`, sem framework adicional |
 
 ## ⚡ Início rápido
@@ -52,7 +56,7 @@ O projeto foi desenhado para ser extensível: novos provedores, regras de normal
 ### Instalação
 
 ```bash
-git clone https://github.com/SEU-USUARIO/liturgia-tts-api.git
+git clone https://github.com/Mazokazorb/liturgia-tts-api.git
 cd liturgia-tts-api
 cp .env.example .env
 npm test
@@ -61,7 +65,7 @@ npm start
 
 A API ficará disponível em `http://localhost:3000`.
 
-> Substitua `SEU-USUARIO` pelo proprietário do repositório depois de publicá-lo no GitHub. O projeto não exige `npm install` no estado atual, pois não possui dependências de runtime.
+> O projeto não possui dependências npm de runtime. Para gerar áudio, instale Piper, FFmpeg e FFprobe e configure um modelo ONNX compatível; consulte [docs/AUDIO.md](docs/AUDIO.md).
 
 ### Primeira consulta
 
@@ -74,6 +78,15 @@ curl "http://localhost:3000/api/v1/liturgy/2026-11-01"
 
 # Duas fontes para a data corrente
 curl "http://localhost:3000/api/v1/liturgy/today?source=both"
+
+# Calendário litúrgico
+curl "http://localhost:3000/api/v1/calendar/today"
+
+# Santo do dia em áudio (requer Piper + modelo configurado)
+curl "http://localhost:3000/api/v1/audio/saint-of-the-day?format=mp3"
+
+# Pacote multimídia com áudio, imagem e legendas
+curl "http://localhost:3000/api/v1/content/today?include=calendar,liturgy,saint,image,audio&audioFormat=mp3"
 ```
 
 ## 🧭 Roteamento de provedores
@@ -246,7 +259,7 @@ npm run check  # verificação sintática + testes
 npm run dev    # reinício automático durante desenvolvimento
 ```
 
-Os testes cobrem normalização de referências, limpeza textual, mapeamento dos provedores, seleção de fontes e resolução de datas. Eles não substituem testes de integração com os serviços externos.
+Os testes cobrem normalização, provedores, roteamento, calendário, geração de legendas e pipeline de áudio. O pipeline de áudio é exercitado com um sintetizador simulado e FFmpeg real; isso valida montagem, medição, cache e serialização, mas não substitui uma prova acústica com o modelo Piper Faber real. Os provedores externos também não são chamados na suíte.
 
 O GitHub Actions executa a suíte em Node.js 22 e 24 a cada push e pull request.
 
@@ -264,7 +277,10 @@ O GitHub Actions executa a suíte em Node.js 22 e 24 a cada push e pull request.
 
 ```bash
 docker build -t liturgia-tts-api .
-docker run --rm -p 3000:3000 liturgia-tts-api
+docker run --rm -p 3000:3000 \
+  -v "$PWD/models:/models:ro" \
+  -v "$PWD/var/audio:/app/var/audio" \
+  liturgia-tts-api
 ```
 
 Para configurações específicas, injete as variáveis de ambiente no container. O `.env` local não é copiado para a imagem.
@@ -278,18 +294,22 @@ Para configurações específicas, injete as variáveis de ambiente no container
 5. A licença e a autoria podem não estar disponíveis em todos os resultados; o consumidor deve consultar a página de origem.
 6. A disponibilidade e o contrato das APIs externas podem mudar sem aviso.
 7. O cache é volátil, local ao processo e não compartilhado entre instâncias; possui TTL e limite máximo de entradas.
-8. O projeto prepara texto para TTS, mas ainda não invoca Piper nem gera WAV/MP3.
-9. A conversão de números no corpo das leituras não é indiscriminada, para evitar alteração semântica de versículos e passagens.
-10. A suíte automatizada não valida disponibilidade real dos provedores externos.
+8. O motor de áudio requer Piper, modelo ONNX, FFmpeg e FFprobe instalados; a imagem Docker instala o runtime Piper, mas o modelo de voz deve ser montado em `/models`.
+9. A sincronização das legendas é por frase/segmento, não por palavra. O alinhamento lexical exige um alinhador forçado ou timestamps fonéticos.
+10. O calendário calcula o ciclo temporal do Calendário Romano Geral, mas não substitui o Diretório Litúrgico oficial da CNBB nem calendários próprios locais.
+11. A conversão de números no corpo das leituras não é indiscriminada, para evitar alteração semântica de versículos e passagens.
+12. A suíte automatizada não valida disponibilidade real dos provedores externos nem a qualidade acústica de uma voz real.
 
 ## 🗺️ Próximos incrementos sugeridos
 
-- Integração desacoplada com Piper via processo local ou serviço HTTP.
+- Alinhamento forçado palavra a palavra para legendas (por exemplo, com timestamps fonéticos).
 - Cache persistente e estratégia de invalidação por provedor/data.
 - Contratos versionados e fixtures de respostas reais anonimizadas.
 - Observabilidade com logs estruturados, métricas e tracing.
 - Rate limiting e políticas de proteção para exposição pública.
 - OpenAPI/Swagger para documentação interativa.
+
+Consulte também [docs/CALENDAR.md](docs/CALENDAR.md), [docs/AUDIO.md](docs/AUDIO.md) e [docs/API.md](docs/API.md) para contratos e limitações.
 
 ## 📚 Fontes de dados
 

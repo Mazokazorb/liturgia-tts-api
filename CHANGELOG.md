@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.0] - 2026-11-08
+
+### Added
+- Motor de síntese Piper desacoplado, com execução por processo local e modelo ONNX configurável.
+- Segmentação textual por frase, síntese de cada segmento e medição de duração via FFprobe.
+- Montagem WAV via FFmpeg, conversão opcional MP3 e pausas configuráveis entre segmentos.
+- Geração de legendas SRT e WebVTT sincronizadas por duração real de cada segmento sintetizado.
+- Cache determinístico SHA-256 para áudio e legendas, com entrega por `/media/{hash}.{ext}`.
+- Calendário Romano Geral simplificado: computus gregoriano, tempos litúrgicos, cores de referência, ciclos dominicais/feriais e datas móveis.
+- Endpoints `/api/v1/calendar/*`, `/api/v1/audio/*` e `/api/v1/content/*`.
+- Pacote multimídia que agrega calendário, liturgia, santo, imagem e áudio opcional.
+- Dockerfile com Piper, FFmpeg e FFprobe; modelos de voz permanecem montados externamente em `/models`.
+- Testes de calendário, legendas, pipeline de áudio com Piper simulado e integração HTTP dos novos endpoints.
+
+### Changed
+- Versão do pacote e do endpoint `/health` atualizada para 1.6.0.
+- Configuração de áudio isolada por variáveis de ambiente; a API textual continua operando sem o runtime de áudio.
+
+### Limitations
+- Legendas sincronizadas por frase, não por palavra; Piper CLI não fornece alinhamento lexical temporal confiável.
+- O calendário é temporal e simplificado; não substitui o Diretório Litúrgico da CNBB nem calendários próprios locais.
+- O modelo Faber não é distribuído no repositório ou na imagem Docker.
+- A suíte valida a montagem do pipeline com um Piper simulado; a qualidade acústica real depende da instalação do modelo escolhido.
+
 ## [1.5.0] - 2026-11-08
 
 ### Added

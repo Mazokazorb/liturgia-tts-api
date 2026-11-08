@@ -25,5 +25,8 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Instalar FFmpeg para os testes de integração de áudio
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Verificar sintaxe e executar testes
         run: npm run check

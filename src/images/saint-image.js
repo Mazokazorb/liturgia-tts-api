@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 
-const USER_AGENT = 'LiturgiaTTSAPI/1.5.0 (saint image resolver; contact: project maintainers)';
+const USER_AGENT = 'LiturgiaTTSAPI/1.6.0 (saint image resolver; contact: project maintainers)';
 
 function normalizeSearchName(name) {
   return String(name || '')

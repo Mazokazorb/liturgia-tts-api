@@ -1,9 +1,9 @@
 {
   "name": "liturgia-tts-api",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
-  "description": "API modular para consultar, normalizar e preparar textos litúrgicos católicos para síntese de voz (TTS).",
+  "description": "API modular para conteúdo litúrgico, calendário romano, síntese Piper TTS e pacotes multimídia com legendas sincronizadas.",
   "engines": {
     "node": ">=22.9.0"
   },

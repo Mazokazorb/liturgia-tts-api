@@ -55,3 +55,8 @@ Os testes unitários não dependem da internet. Para validar um upstream, execut
 ## Pull requests
 
 Inclua contexto, motivação, comportamento anterior/novo, testes executados, impacto no contrato HTTP e eventuais mudanças documentais. Alterações no formato de resposta devem ser tratadas como mudanças de contrato e documentadas antes do merge.
+
+
+## Desenvolvimento do motor de áudio
+
+Os testes de integração do pipeline usam FFmpeg/FFprobe reais e um executável Piper simulado. Instale FFmpeg/FFprobe no ambiente de desenvolvimento antes de executar `npm test`. Para validar a qualidade acústica, configure também o executável Piper e um modelo ONNX real conforme `docs/AUDIO.md`; essa validação não é simulada pela suíte automatizada.

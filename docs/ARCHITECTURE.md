@@ -84,4 +84,6 @@ Preserve o conteúdo original sempre que possível. Não descarte introduções,
 
 ## Extensibilidade
 
-Novas fontes devem implementar um adaptador, um canonicalizador e um teste de contrato. Integrações de áudio devem consumir o payload TTS sem acoplar Piper à camada HTTP ou aos provedores litúrgicos.
+Novas fontes devem implementar um adaptador, um canonicalizador e um teste de contrato. O motor de áudio consome texto normalizado e é isolado em `audio/`; a camada HTTP apenas solicita a síntese e entrega metadados/arquivos. O calendário é um módulo de domínio independente. O agregador `content/` compõe esses módulos sem transferir regras litúrgicas para os provedores ou para o servidor HTTP.
+
+O pipeline de áudio sintetiza cada frase separadamente, mede a duração dos WAVs e usa essas medidas para construir cues SRT/WebVTT. Essa estratégia oferece sincronização por frase com tempos observados, sem alegar alinhamento palavra a palavra.

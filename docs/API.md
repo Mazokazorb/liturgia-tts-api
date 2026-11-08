@@ -14,7 +14,14 @@ Resposta `200`:
 {
   "status": "ok",
   "service": "liturgia-tts-api",
-  "version": "1.5.0"
+  "version": "1.6.0",
+  "audio": {
+    "enabled": false,
+    "provider": "piper",
+    "voice": "faber",
+    "subtitles": ["srt", "vtt"],
+    "synchronization": "sentence-level-duration-measured"
+  }
 }
 ```
 
@@ -191,3 +198,66 @@ Em `source=both`, uma fonte pode falhar e a outra responder. Nesse caso, a API r
 - Não una respostas de fontes diferentes sem uma política explícita de reconciliação.
 - Use `routing.selectedProvider` para registrar a origem efetivamente consultada.
 - `voice` é metadado; não dispara uma síntese de áudio nesta versão.
+
+## Calendário litúrgico
+
+### `GET /api/v1/calendar/today`
+
+Retorna a situação temporal do dia corrente no fuso `America/Sao_Paulo`.
+
+### `GET /api/v1/calendar/date/YYYY-MM-DD`
+
+Retorna tempo litúrgico, cor de referência, ano litúrgico, ciclo dominical, ciclo ferial, data da Páscoa e celebrações móveis principais.
+
+### `GET /api/v1/calendar/year?year=2026`
+
+Retorna o intervalo do ano litúrgico e as principais datas móveis calculadas.
+
+> O cálculo implementa o ciclo temporal do Calendário Romano Geral em nível simplificado. Não substitui o Diretório Litúrgico oficial da CNBB nem calendários próprios locais.
+
+## Síntese de áudio e legendas
+
+### `GET /api/v1/audio/status`
+
+Informa se o caminho de modelo Piper está configurado e quais formatos/legendas o módulo oferece. A existência do executável e a validade do modelo são confirmadas na execução da síntese.
+
+### `GET /api/v1/audio/saint-of-the-day?format=wav&mode=editorial&voice=faber`
+
+### `GET /api/v1/audio/liturgy?date=YYYY-MM-DD&format=mp3&mode=editorial&voice=faber`
+
+Retornam JSON com URLs dos arquivos de áudio e legendas, duração total, número de segmentos e estratégia de sincronização. Formatos aceitos: `wav` e `mp3`.
+
+A sincronização é por frase: cada segmento de texto é sintetizado individualmente, sua duração é medida via FFprobe e os tempos dos cues são calculados a partir dessas durações e das pausas inseridas entre segmentos.
+
+### Arquivos de mídia
+
+- `GET /media/{sha256}.wav`
+- `GET /media/{sha256}.mp3`
+- `GET /media/{sha256}.srt`
+- `GET /media/{sha256}.vtt`
+
+Os nomes são hashes determinísticos e os arquivos recebem cache HTTP imutável. O diretório de saída deve ser persistente se os links precisarem sobreviver a reinicializações ou deploys.
+
+## Pacotes multimídia
+
+### `GET /api/v1/content/today`
+
+### `GET /api/v1/content/YYYY-MM-DD/package`
+
+Parâmetros:
+
+| Parâmetro | Valores | Padrão | Descrição |
+|---|---|---|---|
+| `include` | `calendar,liturgy,saint,image,audio` | `calendar,liturgy,saint,image` | Módulos a agregar |
+| `source` | `auto`, `dancrf`, `cancaonova`, `both` | `auto` | Fonte litúrgica |
+| `mode` | `faithful`, `editorial`, `both` | `editorial` | Normalização textual |
+| `voice` | identificador configurado | `faber` | Voz Piper configurada |
+| `audioFormat` | `wav`, `mp3` | `wav` | Formato de áudio quando `audio` está incluído |
+
+Exemplo:
+
+```bash
+curl "http://localhost:3000/api/v1/content/today?include=calendar,liturgy,saint,image,audio&audioFormat=mp3"
+```
+
+A inclusão de `audio` requer modelo Piper e FFmpeg/FFprobe configurados. Sem o runtime de áudio, a API retorna `503` para a síntese, mas os módulos textuais e o calendário permanecem disponíveis.
