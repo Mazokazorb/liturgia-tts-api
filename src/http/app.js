@@ -1,11 +1,13 @@
 import { URL } from 'node:url';
 import { config } from '../config.js';
 import { cacheGet, cacheSet } from '../cache.js';
-import { buildTtsPayload } from '../normalization/index.js';
+import { buildTtsPayload, buildSaintTtsPayload } from '../normalization/index.js';
 import { PROVIDERS, PROVIDER_CATALOG } from '../providers/index.js';
 import { currentDateInTimeZone, resolveRequestedDate } from '../core/date.js';
 import { resolveProviders, VALID_SOURCES, VALID_MODES, VALID_OUTPUTS } from '../core/routing.js';
 import { sendJson } from './respond.js';
+import { fetchSaintOfDay } from '../providers/saint-of-day.js';
+import { resolveSaintImage } from '../images/saint-image.js';
 
 export async function loadProvider(name, date) {
   const key = `${name}:${date}`;
@@ -40,12 +42,100 @@ export async function handleRequest(req, res) {
     return sendJson(res, 200, {
       status: 'ok',
       service: 'liturgia-tts-api',
-      version: '1.3.0'
+      version: '1.5.0'
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/v1/providers') {
     return sendJson(res, 200, { providers: PROVIDER_CATALOG });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/v1/saint-of-the-day') {
+    const today = currentDateInTimeZone();
+    const includeImage = url.searchParams.get('image') !== 'none';
+    const refresh = url.searchParams.get('refresh') === 'true';
+    const format = url.searchParams.get('format') || 'both';
+    const mode = url.searchParams.get('mode') || 'both';
+    const voice = url.searchParams.get('voice') || 'faber';
+
+    if (!['original', 'tts', 'both'].includes(format)) {
+      return sendJson(res, 400, { error: 'format deve ser original, tts ou both.' });
+    }
+    if (!['faithful', 'editorial', 'both'].includes(mode)) {
+      return sendJson(res, 400, { error: 'mode deve ser faithful, editorial ou both.' });
+    }
+    if (!voice.trim() || voice.length > 80) {
+      return sendJson(res, 400, { error: 'voice deve conter entre 1 e 80 caracteres.' });
+    }
+
+    const key = `saint-of-day:${today}`;
+    let result = refresh ? null : cacheGet(key);
+    const cached = Boolean(result);
+
+    try {
+      if (!result) {
+        const fetched = await fetchSaintOfDay(today);
+        result = { ...fetched.canonical, providerUrl: fetched.providerUrl };
+        cacheSet(key, result, 21600, config.cacheMaxEntries);
+      }
+
+      const normalized = buildSaintTtsPayload(result, { mode, voice });
+      const selectFormat = field => {
+        if (format === 'original') return { original: field.original };
+        if (format === 'tts') return { tts: field.tts, ...(field.versions ? { versions: field.versions } : {}) };
+        return field;
+      };
+
+      let image = { status: 'skipped', url: null, provider: null, attribution: null };
+      if (includeImage) {
+        const imageKey = `saint-image:${result.title.toLocaleLowerCase('pt-BR')}`;
+        image = refresh ? null : cacheGet(imageKey);
+        if (!image) {
+          image = await resolveSaintImage(result.title);
+          cacheSet(imageKey, image, 604800, config.cacheMaxEntries);
+        }
+      }
+
+      const warnings = [];
+      if (result.isCurrentDate === false) {
+        warnings.push(`A fonte retornou ${result.date || 'uma data diferente'} para a solicitação de hoje (${today}). O conteúdo foi preservado, mas pode estar desatualizado.`);
+      }
+      if (includeImage && image.status !== 'found') {
+        warnings.push('Não foi possível localizar uma imagem adequada; consulte image.warnings para detalhes.');
+      }
+
+      return sendJson(res, 200, {
+        date: result.date,
+        requestedDate: today,
+        isCurrentDate: result.isCurrentDate,
+        title: result.title,
+        biography: selectFormat(normalized.biography),
+        prayer: selectFormat(normalized.prayer),
+        otherSaints: format === 'tts'
+          ? normalized.otherSaints.map(item => item.tts)
+          : format === 'original'
+            ? normalized.otherSaints.map(item => item.original)
+            : normalized.otherSaints.map(item => ({ original: item.original, tts: item.tts, ...(item.versions ? { versions: item.versions } : {}) })),
+        ...(format !== 'original' ? {
+          tts: {
+            voice: normalized.voice,
+            mode: normalized.mode,
+            selectedMode: normalized.selectedMode,
+            spokenText: normalized.spokenText
+          }
+        } : {}),
+        normalization: { format, mode, voice },
+        source: { name: result.source, url: result.providerUrl },
+        image,
+        cached,
+        warnings
+      });
+    } catch (error) {
+      return sendJson(res, Number.isInteger(error.status) ? error.status : 502, {
+        error: 'Não foi possível consultar o santo do dia.',
+        details: error.message
+      });
+    }
   }
 
   const liturgyRoute = /^\/api\/v1\/liturgy(?:\/[^/]+)?$/.test(url.pathname);

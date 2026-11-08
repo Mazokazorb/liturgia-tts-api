@@ -36,6 +36,10 @@ Cada adaptador conhece exclusivamente o contrato de um serviço externo. O catá
 
 Transforma respostas heterogêneas em um modelo canônico e cria variantes para leitura oral. Os módulos são separados por responsabilidade: `bible-references.js` expande referências e números; `spoken-text.js` trata a superfície textual oral; `canonicalizers.js` mapeia contratos upstream; `tts-payload.js` monta a estrutura final. `index.js` expõe a fachada pública da camada.
 
+### `images/`
+
+`saint-image.js` implementa uma estratégia de resolução desacoplada do provedor textual. A busca primária usa a API do Wikimedia Commons, filtra arquivos por MIME e dimensões, ordena candidatos por relevância aproximada e extrai metadados de licença/autoria. A Wikipédia é fallback quando Commons não oferece imagem utilizável. O campo `image` recebido da API de santo não é aceito como imagem final, pois pode apontar para ícone genérico ou recurso sem relação com o santo.
+
 ### `cache.js`
 
 Implementa cache em memória com TTL, limite de entradas e política aproximada de LRU. A chave atual combina identificador do provedor e data. O cache não é distribuído e não persiste após reinício.
@@ -73,8 +77,10 @@ Preserve o conteúdo original sempre que possível. Não descarte introduções,
 2. **Canção Nova `/cn` é corrente.** O roteador evita consultá-la para datas históricas ou futuras.
 3. **A data é civil e explicitamente zonada.** Não use o fuso local do servidor para decidir o provedor.
 4. **Texto fiel e texto editorial são representações distintas.** A variante editorial não deve parafrasear ou alterar conteúdo bíblico.
-5. **Normalização de números é conservadora.** Alterações automáticas dentro do corpo podem corromper numeração de versículos, capítulos ou quantidades.
-6. **Falhas parciais são preservadas.** Em consultas a múltiplas fontes, uma falha não elimina o resultado válido da outra.
+5. **Imagens são referências externas.** A API não baixa nem hospeda imagens; devolve URL, página de origem e metadados de atribuição quando disponíveis. A correspondência automática não equivale a autenticação iconográfica.
+6. **Integridade temporal é explícita.** O módulo de santo compara a data declarada pela fonte com a data corrente em `America/Sao_Paulo` e sinaliza divergências sem mascará-las.
+7. **Normalização de números é conservadora.** Alterações automáticas dentro do corpo podem corromper numeração de versículos, capítulos ou quantidades.
+8. **Falhas parciais são preservadas.** Em consultas a múltiplas fontes, uma falha não elimina o resultado válido da outra.
 
 ## Extensibilidade
 

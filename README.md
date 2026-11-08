@@ -7,7 +7,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22.9%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Tests](https://img.shields.io/badge/tests-node--test-2ea44f)](.github/workflows/ci.yml)
 [![API](https://img.shields.io/badge/API-REST%20%2F%20JSON-2563eb)](docs/API.md)
-[![Version](https://img.shields.io/badge/version-1.3.0-7c3aed)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.0-7c3aed)](CHANGELOG.md)
 
 *Canção Nova para a liturgia corrente · Dancrf para consultas por data · Saída preparada para TTS*
 
@@ -33,6 +33,10 @@ O projeto foi desenhado para ser extensível: novos provedores, regras de normal
 | Normalização | `faithful`, `editorial` ou `both` |
 | Formato de saída | `continuous`, `sections` ou `both` |
 | Preparação TTS | Texto falado, referências expandidas e pausas por seção |
+| Santo do dia | Biografia, oração e lista de outros santos via API comunitária |
+| Normalização hagiográfica | Campos `original` / `tts`, modos `faithful` / `editorial` e roteiro contínuo |
+| Imagem do santo | Busca Wikimedia Commons, fallback Wikipédia e metadados de atribuição/licença |
+| Integridade temporal | Detecção de resposta upstream referente a uma data diferente da solicitada |
 | Cache | Memória do processo, TTL e limite de entradas configuráveis |
 | Runtime | Node.js nativo, sem dependências externas de runtime |
 | Testes | `node:test`, sem framework adicional |
@@ -104,7 +108,10 @@ src/http/app.js ── Rotas, validação e composição da resposta
     ├── src/providers/ ── Integrações externas e catálogo
     │       ├── cancaonova.js
     │       ├── dancrf.js
+    │       ├── saint-of-day.js
     │       └── index.js
+    ├── images/
+    │   └── saint-image.js
     ├── src/normalization/ ── Modelo canônico e roteiro TTS
     ├── src/cache.js ── Cache em memória
     └── src/http/respond.js ── Resposta JSON e CORS
@@ -136,9 +143,12 @@ src/http/app.js ── Rotas, validação e composição da resposta
 │   │   ├── spoken-text.js
 │   │   ├── tts-payload.js
 │   │   └── index.js
+│   ├── images/
+│   │   └── saint-image.js
 │   ├── providers/
 │   │   ├── cancaonova.js
 │   │   ├── dancrf.js
+│   │   ├── saint-of-day.js
 │   │   └── index.js
 │   ├── cache.js
 │   ├── config.js
@@ -172,8 +182,32 @@ Para entender responsabilidades e dependências entre módulos, consulte [Arquit
 | `GET` | `/api/v1/liturgy/today` | Liturgia corrente |
 | `GET` | `/api/v1/liturgy/YYYY-MM-DD` | Consulta por data |
 | `GET` | `/api/v1/liturgy?date=YYYY-MM-DD` | Consulta por query string |
+| `GET` | `/api/v1/saint-of-the-day` | Santo do dia, biografia, oração e imagem resolvida |
 
 Parâmetros completos, exemplos de resposta e códigos HTTP estão em [docs/API.md](docs/API.md).
+
+### Santo do dia e resolução de imagem
+
+```bash
+# Santo do dia com tentativa automática de imagem
+curl "http://localhost:3000/api/v1/saint-of-the-day"
+
+# Somente dados textuais, sem consultar serviços de imagem
+curl "http://localhost:3000/api/v1/saint-of-the-day?image=none"
+
+# Ignorar cache e repetir a consulta upstream e a busca de imagem
+curl "http://localhost:3000/api/v1/saint-of-the-day?refresh=true"
+
+# Somente texto pronto para TTS, com normalização editorial
+curl "http://localhost:3000/api/v1/saint-of-the-day?format=tts&mode=editorial&image=none"
+
+# Texto original para exibição/auditoria
+curl "http://localhost:3000/api/v1/saint-of-the-day?format=original&image=none"
+```
+
+O resolvedor pesquisa primeiro no Wikimedia Commons, selecionando arquivos raster com dimensões mínimas e descartando formatos vetoriais, GIFs e nomes com indícios de ícone/logotipo. Se não houver resultado utilizável, tenta a miniatura da página correspondente na Wikipédia. A resposta inclui `image.url`, `image.pageUrl`, `image.provider`, `image.license`, `image.artist` e `image.attribution`, quando disponíveis. O cliente deve preservar a atribuição e conferir os termos da licença antes de redistribuir a imagem.
+
+A API também compara a data devolvida pela fonte com a data corrente em `America/Sao_Paulo`. Se houver divergência, mantém o conteúdo para inspeção, mas retorna `isCurrentDate: false` e um aviso em `warnings`; assim, uma resposta antiga não é apresentada silenciosamente como atual.
 
 ## 🎙️ Modos de normalização
 
@@ -181,7 +215,7 @@ Parâmetros completos, exemplos de resposta e códigos HTTP estão em [docs/API.
 - **`editorial`** — ajusta segmentação e pontuação para leitura oral, sem reescrever o conteúdo bíblico.
 - **`both`** — entrega as duas representações para comparação ou seleção posterior.
 
-O campo `spokenText` é uma composição textual destinada à etapa de TTS. O texto canônico original permanece separado do texto preparado para fala.
+No endpoint de santo, `biography` e `prayer` preservam `original` e `tts`; em `mode=both`, também incluem `versions.faithful` e `versions.editorial`. O campo agregado `tts.spokenText` combina título, biografia, oração e outros santos. O campo `spokenText` é uma composição textual destinada à etapa de TTS. O texto canônico original permanece separado do texto preparado para fala.
 
 ## ⚙️ Configuração
 
@@ -196,6 +230,10 @@ As variáveis podem ser definidas no arquivo `.env` (copiado de `.env.example`) 
 | `UPSTREAM_TIMEOUT_MS` | `12000` | Timeout das chamadas externas |
 | `DANCRF_BASE_URL` | URL pública v2 | Endpoint-base Dancrf |
 | `CANCAONOVA_URL` | URL comunitária `/cn` | Endpoint corrente Canção Nova |
+| `SAINT_OF_DAY_URL` | URL comunitária `/santo-do-dia` | Endpoint do santo do dia |
+| `WIKIMEDIA_API_URL` | `https://commons.wikimedia.org/w/api.php` | API de busca do Wikimedia Commons |
+| `WIKIPEDIA_SUMMARY_BASE_URL` | `https://pt.wikipedia.org/api/rest_v1/page/summary` | Fallback de miniatura da Wikipédia |
+| `IMAGE_LOOKUP_TIMEOUT_MS` | `9000` | Timeout de cada consulta de imagem |
 | `CORS_ORIGIN` | `*` | Origem permitida pelo CORS |
 
 O carregamento opcional de `.env` é feito pelo recurso nativo `--env-file-if-exists` do Node.js. Não coloque credenciais ou segredos no repositório.
@@ -233,13 +271,16 @@ Para configurações específicas, injete as variáveis de ambiente no container
 
 ## ⚠️ Limitações conhecidas
 
-1. A fonte Canção Nova depende de uma API comunitária de terceiros, não de um serviço oficial operado pela Canção Nova.
+1. As fontes Canção Nova dependem de uma API comunitária de terceiros, não de um serviço oficial operado pela Canção Nova.
 2. A rota `/cn` fornece apenas a liturgia corrente; consultas por data são encaminhadas à Dancrf.
-3. A disponibilidade e o contrato das APIs externas podem mudar sem aviso.
-4. O cache é volátil, local ao processo e não compartilhado entre instâncias; possui TTL e limite máximo de entradas.
-5. O projeto prepara texto para TTS, mas ainda não invoca Piper nem gera WAV/MP3.
-6. A conversão de números no corpo das leituras não é indiscriminada, para evitar alteração semântica de versículos e passagens.
-7. A suíte automatizada atual não valida disponibilidade real dos provedores externos.
+3. O endpoint de santo do dia pode devolver uma data divergente; a API sinaliza a inconsistência, mas não corrige o conteúdo upstream.
+4. A imagem é uma correspondência automatizada por nome, não uma validação iconográfica ou histórica.
+5. A licença e a autoria podem não estar disponíveis em todos os resultados; o consumidor deve consultar a página de origem.
+6. A disponibilidade e o contrato das APIs externas podem mudar sem aviso.
+7. O cache é volátil, local ao processo e não compartilhado entre instâncias; possui TTL e limite máximo de entradas.
+8. O projeto prepara texto para TTS, mas ainda não invoca Piper nem gera WAV/MP3.
+9. A conversão de números no corpo das leituras não é indiscriminada, para evitar alteração semântica de versículos e passagens.
+10. A suíte automatizada não valida disponibilidade real dos provedores externos.
 
 ## 🗺️ Próximos incrementos sugeridos
 

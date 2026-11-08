@@ -49,3 +49,20 @@ Não converta indiscriminadamente todos os números do corpo da leitura. Eles po
 3. Diferenciar referência bíblica de corpo textual.
 4. Cobrir acentos, abreviações, pontuação e casos-limite em testes.
 5. Comparar a saída falada com a fonte original por revisão humana.
+
+
+## Conteúdo hagiográfico (santo do dia)
+
+O endpoint `/api/v1/saint-of-the-day` reutiliza `normalizeSpokenText` e não mantém um segundo conjunto de regras. `biography` e `prayer` preservam `original` e fornecem `tts`; quando `mode=both`, `versions.faithful` e `versions.editorial` permitem comparar as duas estratégias. O campo simples `tts` seleciona `faithful` quando esse modo foi solicitado e `editorial` nos modos `editorial` ou `both`.
+
+O normalizador remove blocos `script`/`style`, tags HTML e decodifica entidades HTML comuns e numéricas antes da preparação oral. O conteúdo original permanece intacto para exibição e auditoria. `otherSaints` recebe o mesmo tratamento e `tts.spokenText` agrega título, biografia, oração e nomes adicionais em uma sequência pronta para o sintetizador.
+
+Parâmetros do endpoint:
+
+- `format=both` (padrão): retorna `original` e `tts`.
+- `format=original`: retorna somente a fonte original, sem o objeto agregado `tts`.
+- `format=tts`: retorna somente o texto normalizado.
+- `mode=faithful|editorial|both`: seleciona a estratégia textual.
+- `voice=faber`: identifica a voz pretendida; não invoca Piper nem produz WAV/MP3.
+
+A normalização é uma transformação textual determinística, não uma revisão teológica ou histórica. Nomes próprios, termos hagiográficos e formulações doutrinárias devem ser conferidos em revisão humana antes de publicação em áudio.

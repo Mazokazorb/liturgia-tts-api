@@ -14,13 +14,76 @@ Resposta `200`:
 {
   "status": "ok",
   "service": "liturgia-tts-api",
-  "version": "1.3.0"
+  "version": "1.5.0"
 }
 ```
 
 ## `GET /api/v1/providers`
 
 Retorna o catálogo de provedores e suas funções.
+
+## `GET /api/v1/saint-of-the-day`
+
+Consulta a fonte comunitária `/santo-do-dia`, canonicaliza os campos do santo, prepara biografia e oração para TTS usando o mesmo motor textual da liturgia e tenta obter uma imagem representativa. A imagem não é copiada para o servidor: a resposta contém uma URL pública e metadados de origem. A normalização TTS não gera arquivo de áudio; ela entrega texto pronto para um sintetizador como Piper.
+
+### Parâmetros
+
+| Parâmetro | Valores | Padrão | Descrição |
+|---|---|---|---|
+| `image` | `auto`, `none` | `auto` | `auto` tenta resolver imagem; `none` retorna apenas conteúdo textual |
+| `refresh` | `true`, `false` | `false` | `true` ignora o cache de dados e imagem |
+| `format` | `original`, `tts`, `both` | `both` | Seleciona texto original, texto normalizado ou ambos |
+| `mode` | `faithful`, `editorial`, `both` | `both` | Variante de normalização; em `both`, `tts` usa `editorial` como seleção padrão e `versions` expõe as duas variantes |
+| `voice` | string (1–80 caracteres) | `faber` | Identificador de voz para consumo posterior; não executa síntese de áudio |
+
+### Exemplo
+
+```bash
+curl "http://localhost:3000/api/v1/saint-of-the-day"
+curl "http://localhost:3000/api/v1/saint-of-the-day?image=none"
+curl "http://localhost:3000/api/v1/saint-of-the-day?format=tts&mode=editorial&image=none"
+curl "http://localhost:3000/api/v1/saint-of-the-day?format=original&image=none"
+```
+
+### Estrutura de resposta
+
+```json
+{
+  "date": "2026-11-08",
+  "requestedDate": "2026-11-08",
+  "isCurrentDate": true,
+  "title": "Santo do dia",
+  "biography": {
+    "original": "<p>Texto biográfico...</p>",
+    "tts": "Texto biográfico...",
+    "versions": { "faithful": "Texto biográfico...", "editorial": "Texto biográfico..." }
+  },
+  "prayer": {
+    "original": "Oração opcional...",
+    "tts": "Oração opcional...",
+    "versions": { "faithful": "Oração opcional...", "editorial": "Oração opcional..." }
+  },
+  "otherSaints": [{ "original": "São Exemplo", "tts": "São Exemplo", "versions": { "faithful": "São Exemplo", "editorial": "São Exemplo" } }],
+  "tts": { "voice": "faber", "mode": "both", "selectedMode": "editorial", "spokenText": "Santo do dia. Texto biográfico..." },
+  "normalization": { "format": "both", "mode": "both", "voice": "faber" },
+  "source": { "name": "Canção Nova", "url": "https://api-liturgia-diaria.vercel.app/santo-do-dia" },
+  "image": {
+    "status": "found",
+    "url": "https://upload.wikimedia.org/...",
+    "pageUrl": "https://commons.wikimedia.org/wiki/File:...",
+    "provider": "wikimedia_commons",
+    "license": "CC BY-SA ...",
+    "artist": "Autor identificado",
+    "attribution": "Autor · crédito · licença"
+  },
+  "cached": false,
+  "warnings": []
+}
+```
+
+Os valores acima são ilustrativos. Com `format=original`, cada campo textual contém apenas `original` e o objeto agregado `tts` é omitido. Com `format=tts`, os campos contêm apenas `tts` (e `versions` quando `mode=both`). `image.status` pode ser `found`, `not_found` ou `skipped`. A busca prioriza Wikimedia Commons; a Wikipédia é fallback. A URL `image.url` é uma miniatura adequada para exibição, enquanto `image.originalUrl` aponta para o arquivo original quando fornecido. `image.pageUrl` deve ser mantida como referência de autoria/licença.
+
+`isCurrentDate: false` indica que a fonte devolveu uma data diferente da data solicitada no fuso `America/Sao_Paulo`. A API mantém o conteúdo para diagnóstico, mas inclui um aviso em `warnings`; clientes podem optar por não exibi-lo como conteúdo corrente.
 
 ## `GET /api/v1/liturgy/today`
 
@@ -117,7 +180,7 @@ O exemplo é ilustrativo e reduzido; a quantidade de seções e os campos dispon
 | `400` | Data ou parâmetro inválido |
 | `404` | Rota ou método não reconhecido |
 | `409` | Canção Nova foi solicitada para uma data que não é a corrente |
-| `502` | Nenhum provedor solicitado conseguiu retornar dados |
+| `502` | Nenhum provedor solicitado conseguiu retornar dados ou a fonte de santos falhou |
 | `500` | Erro interno não tratado |
 
 Em `source=both`, uma fonte pode falhar e a outra responder. Nesse caso, a API retorna `200`, os dados disponíveis em `results` e as falhas individuais em `errors`. Se todos os provedores falharem, a API preserva um status HTTP de cliente relevante (por exemplo, `409` para data incompatível com Canção Nova); nos demais casos, retorna `502`.
