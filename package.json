@@ -1,0 +1,26 @@
+{
+  "name": "liturgia-tts-api",
+  "version": "1.3.0",
+  "private": true,
+  "type": "module",
+  "description": "API modular para consultar, normalizar e preparar textos litúrgicos católicos para síntese de voz (TTS).",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "check": "node --check src/server.js && node --test"
+  },
+  "keywords": [
+    "liturgia",
+    "catolica",
+    "api",
+    "tts",
+    "text-to-speech",
+    "piper",
+    "portugues"
+  ]
+}
